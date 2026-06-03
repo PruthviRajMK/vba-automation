@@ -1,0 +1,402 @@
+
+Private Const DEST_START_ROW As Long = 7
+Private Const LOG_SHEET_NAME As String = "Automation Log"
+
+    Set wbDest = Workbooks.Open(destPath)
+
+    ValidateRequiredSheets wbSource, wbDest
+
+    Clear_Host_Removals_Data wbDest.Worksheets("Host Removals")
+    Clear_Working_Links_Data wbDest.Worksheets("Working Links")
+    Clear_Data_By_Headers wbDest.Worksheets("Search Engine Delisting"), _
+                          Array("Sl. No", "Linking Sites and Thread Links", "Search Engine Platforms")
+    Clear_Hosting_Site_Summary_Data wbDest.Worksheets("Hosting Site Summary")
+
+    Process_Host_Removals wbSource, wbDest
+    Process_Working_Links wbSource, wbDest
+    Process_3gp_Links wbSource, wbDest
+    Process_Embed_Links wbSource, wbDest
+    Process_Source_Links wbSource, wbDest
+    Process_Search_Engine_Delisting wbSource, wbDest
+    Process_Hosting_Site_Summary wbSource, wbDest
+    Run_Automation_Core wbSource, wbDest, True
+
+
+    MsgBox "Automation completed successfully.", vbInformation
+
+CleanExit:
+
+    Run_Automation_Core wbSource, wbDest, False
+
+    wbDest.Save
+    wbSource.Close SaveChanges:=False
+    wbDest.Close SaveChanges:=True
+
+CleanExit:
+    SetAppState True
+    Exit Sub
+
+ErrorHandler:
+    On Error Resume Next
+    If Not wbSource Is Nothing Then wbSource.Close SaveChanges:=False
+    If Not wbDest Is Nothing Then wbDest.Close SaveChanges:=False
+    On Error GoTo 0
+
+    SetAppState True
+    Err.Raise Err.Number, Err.Source, Err.Description
+
+End Sub
+
+Private Sub Run_Automation_Core(ByVal wbSource As Workbook, _
+                                ByVal wbDest As Workbook, _
+                                ByVal showCompletionMessage As Boolean)
+
+    Dim removalRows As Long
+    Dim workingRows As Long
+    Dim searchRows As Long
+    Dim summaryRows As Long
+    Dim duplicateCount As Long
+    Dim completionText As String
+
+    ValidateRequiredSheets wbSource, wbDest
+
+    removalRows = Count_Host_Removal_Rows(wbSource) + _
+                  Count_Status_Based_Rows(wbSource.Worksheets("3gp Links"), "3gp Host Link", "REMOVED") + _
+                  Count_Status_Based_Rows(wbSource.Worksheets("Embed Links"), "Embed Host Link", "REMOVED") + _
+                  Count_Status_Based_Rows(wbSource.Worksheets("Source Links"), "Source Link", "REMOVED")
+
+    workingRows = Count_Host_Working_Rows(wbSource) + _
+                  Count_Status_Based_Rows(wbSource.Worksheets("3gp Links"), "3gp Host Link", "WORKING") + _
+                  Count_Status_Based_Rows(wbSource.Worksheets("Embed Links"), "Embed Host Link", "WORKING") + _
+                  Count_Status_Based_Rows(wbSource.Worksheets("Source Links"), "Source Link", "WORKING")
+
+    searchRows = Count_Source_Data_Rows(wbSource.Worksheets("Search Engine Delisting"), _
+                                        "Linking Sites And Thread Links", SOURCE_HEADER_ROW)
+    summaryRows = Count_Source_Data_Rows(wbSource.Worksheets("Hosting Site Summary"), _
+                                         "Hosting Site", SOURCE_SUMMARY_HEADER_ROW)
+
+    Resize_Flat_Data_Area wbDest.Worksheets("Host Removals"), "Host Site Link", removalRows
+    Resize_Flat_Data_Area wbDest.Worksheets("Working Links"), "Host Site Link", workingRows
+    Resize_Flat_Data_Area wbDest.Worksheets("Search Engine Delisting"), _
+                          "Linking Sites and Thread Links", searchRows
+    Resize_Summary_Data_Area wbDest.Worksheets("Hosting Site Summary"), summaryRows
+
+    Clear_Host_Removals_Data wbDest.Worksheets("Host Removals")
+
+    wbDest.Save
+    wbSource.Close SaveChanges:=False
+    wbDest.Close SaveChanges:=True
+    duplicateCount = Write_Duplicate_Host_Link_Log(wbDest)
+
+CleanExit:
+    SetAppState True
+    Exit Sub
+    If showCompletionMessage Then
+        completionText = "Automation completed successfully." & vbCrLf & vbCrLf & _
+                         "Host Removals rows: " & removalRows & vbCrLf & _
+                         "Working Links rows: " & workingRows & vbCrLf & _
+                         "Search Engine Delisting rows: " & searchRows & vbCrLf & _
+                         "Hosting Site Summary rows: " & summaryRows
+
+ErrorHandler:
+    On Error Resume Next
+    If Not wbSource Is Nothing Then wbSource.Close SaveChanges:=False
+    If Not wbDest Is Nothing Then wbDest.Close SaveChanges:=False
+    On Error GoTo 0
+
+    SetAppState True
+    Err.Raise Err.Number, Err.Source, Err.Description
+        If duplicateCount > 0 Then
+            completionText = completionText & vbCrLf & vbCrLf & _
+                             "Duplicate Host Site Links found: " & duplicateCount & vbCrLf & _
+                             "See '" & LOG_SHEET_NAME & "' sheet."
+            MsgBox completionText, vbExclamation
+        Else
+            completionText = completionText & vbCrLf & vbCrLf & _
+                             "No duplicate Host Site Links found."
+            MsgBox completionText, vbInformation
+        End If
+    End If
+
+    sourceLastRow = GetLastRow(wsSource, colHostLink)
+    destRow = NextDestRow(wsDest, "Host Site Link")
+    destRow = DEST_START_ROW
+
+    sourceLastRow = GetLastRow(wsSource, colHostLink)
+    destRow = NextDestRow(wsDest, "Host Site Link")
+    destRow = DEST_START_ROW
+
+            wsDest.Cells(destRow, GetColumn(wsDest, "Sl. No", DEST_HEADER_ROW)).Value = _
+                wsSource.Cells(i, colSl).Value
+                destRow - DEST_START_ROW + 1
+            wsDest.Cells(destRow, GetColumn(wsDest, "Linking Sites and Thread Links", DEST_HEADER_ROW)).Value = _
+            wsDest.Cells(destRow, GetColumn(wsDest, "Sl. No.", DEST_HEADER_ROW)).Value = _
+                wsSource.Cells(i, colSl).Value
+                destRow - DEST_START_ROW + 1
+            wsDest.Cells(destRow, GetColumn(wsDest, "Hosting Site", DEST_HEADER_ROW)).Value = _
+
+    wsDest.Cells(destRow, GetColumn(wsDest, "Sl.No.", DEST_HEADER_ROW)).Value = slValue
+    wsDest.Cells(destRow, GetColumn(wsDest, "Sl.No.", DEST_HEADER_ROW)).Value = _
+        destRow - DEST_START_ROW + 1
+    wsDest.Cells(destRow, GetColumn(wsDest, "Hosting Site", DEST_HEADER_ROW)).Value = siteValue
+
+    wsDest.Cells(destRow, GetColumn(wsDest, "Sl.No.", DEST_HEADER_ROW)).Value = slValue
+    wsDest.Cells(destRow, GetColumn(wsDest, "Sl.No.", DEST_HEADER_ROW)).Value = _
+        destRow - DEST_START_ROW + 1
+    wsDest.Cells(destRow, GetColumn(wsDest, "Hosting Site", DEST_HEADER_ROW)).Value = siteValue
+'========================================================
+' ROW COUNT / RESIZE HELPERS
+'========================================================
+
+Private Function Count_Host_Removal_Rows(ByVal wbSource As Workbook) As Long
+
+    Count_Host_Removal_Rows = Count_Source_Data_Rows( _
+        wbSource.Worksheets("Content Removal Report"), "Host Link", SOURCE_HEADER_ROW)
+
+End Function
+
+Private Function Count_Host_Working_Rows(ByVal wbSource As Workbook) As Long
+
+    Count_Host_Working_Rows = Count_Source_Data_Rows( _
+        wbSource.Worksheets("Working Links"), "Host Link", SOURCE_HEADER_ROW)
+
+End Function
+
+Private Function Count_Source_Data_Rows(ByVal ws As Worksheet, _
+                                        ByVal keyHeader As String, _
+                                        ByVal headerRow As Long) As Long
+
+    Dim keyCol As Long
+    Dim lastRow As Long
+    Dim r As Long
+    Dim countRows As Long
+
+    keyCol = GetColumn(ws, keyHeader, headerRow)
+    lastRow = GetLastRow(ws, keyCol)
+
+    For r = headerRow + 1 To lastRow
+        If Len(Trim$(CStr(ws.Cells(r, keyCol).Value))) > 0 Then
+            countRows = countRows + 1
+        End If
+    Next r
+
+    Count_Source_Data_Rows = countRows
+
+End Function
+
+Private Function Count_Status_Based_Rows(ByVal ws As Worksheet, _
+                                         ByVal linkHeader As String, _
+                                         ByVal requiredStatus As String) As Long
+
+    Dim linkCol As Long
+    Dim statusCol As Long
+    Dim lastRow As Long
+    Dim r As Long
+    Dim statusText As String
+    Dim countRows As Long
+
+    linkCol = GetColumn(ws, linkHeader, SOURCE_HEADER_ROW)
+    statusCol = GetColumn(ws, "Status", SOURCE_HEADER_ROW)
+    lastRow = GetLastRow(ws, linkCol)
+
+    For r = SOURCE_HEADER_ROW + 1 To lastRow
+        If Len(Trim$(CStr(ws.Cells(r, linkCol).Value))) > 0 Then
+            statusText = CleanHeader(ws.Cells(r, statusCol).Value)
+            If InStr(1, statusText, requiredStatus, vbTextCompare) > 0 Then
+                countRows = countRows + 1
+            End If
+        End If
+    Next r
+
+    Count_Status_Based_Rows = countRows
+
+End Function
+
+Private Sub Resize_Flat_Data_Area(ByVal ws As Worksheet, _
+                                  ByVal keyHeader As String, _
+                                  ByVal targetRows As Long)
+
+    Dim keyCol As Long
+    Dim currentRows As Long
+    Dim effectiveTarget As Long
+
+    keyCol = GetColumn(ws, keyHeader, DEST_HEADER_ROW)
+    currentRows = Application.Max(1, GetLastRow(ws, keyCol) - DEST_START_ROW + 1)
+    effectiveTarget = Application.Max(1, targetRows)
+
+    If currentRows < effectiveTarget Then
+        Insert_Formatted_Rows ws, DEST_START_ROW + currentRows, effectiveTarget - currentRows
+    ElseIf currentRows > effectiveTarget Then
+        ws.Rows((DEST_START_ROW + effectiveTarget) & ":" & _
+                (DEST_START_ROW + currentRows - 1)).Delete
+    End If
+
+End Sub
+
+Private Sub Resize_Summary_Data_Area(ByVal ws As Worksheet, _
+                                     ByVal targetRows As Long)
+
+    Dim footerRow As Long
+    Dim currentRows As Long
+    Dim effectiveTarget As Long
+
+    footerRow = GetSummaryFooterRow(ws)
+    currentRows = Application.Max(1, footerRow - DEST_START_ROW)
+    effectiveTarget = Application.Max(1, targetRows)
+
+    If currentRows < effectiveTarget Then
+        Insert_Formatted_Rows ws, footerRow, effectiveTarget - currentRows
+    ElseIf currentRows > effectiveTarget Then
+        ws.Rows((DEST_START_ROW + effectiveTarget) & ":" & _
+                (footerRow - 1)).Delete
+    End If
+
+End Sub
+
+Private Sub Insert_Formatted_Rows(ByVal ws As Worksheet, _
+                                  ByVal insertAtRow As Long, _
+                                  ByVal rowsToInsert As Long)
+
+    Dim templateRow As Long
+
+    If rowsToInsert <= 0 Then Exit Sub
+
+    templateRow = Application.Max(DEST_START_ROW, insertAtRow - 1)
+    ws.Rows(insertAtRow & ":" & insertAtRow + rowsToInsert - 1).Insert Shift:=xlDown
+    ws.Rows(templateRow).Copy
+    ws.Rows(insertAtRow & ":" & insertAtRow + rowsToInsert - 1).PasteSpecial xlPasteFormats
+    Application.CutCopyMode = False
+
+End Sub
+
+Private Function GetSummaryFooterRow(ByVal ws As Worksheet) As Long
+
+    Dim serialCol As Long
+    Dim lastRow As Long
+    Dim r As Long
+
+    serialCol = GetColumn(ws, "Sl. No.", DEST_HEADER_ROW)
+    lastRow = GetLastRowAny(ws)
+
+    For r = DEST_START_ROW To lastRow
+        If Len(Trim$(CStr(ws.Cells(r, serialCol).Value))) > 0 And _
+           Not IsNumeric(ws.Cells(r, serialCol).Value) Then
+            GetSummaryFooterRow = r
+            Exit Function
+        End If
+    Next r
+
+    GetSummaryFooterRow = GetLastNumericRow(ws, serialCol) + 1
+
+End Function
+
+'========================================================
+' DUPLICATE LOG
+'========================================================
+
+Private Function Write_Duplicate_Host_Link_Log(ByVal wbDest As Workbook) As Long
+
+    Dim wsLog As Worksheet
+    Dim duplicateCount As Long
+    Dim nextRow As Long
+
+    Set wsLog = Reset_Log_Sheet(wbDest)
+
+    wsLog.Range("A1:D1").Value = Array("Sheet", "Host Site Link", "Count", "Rows")
+    wsLog.Range("A1:D1").Font.Bold = True
+
+    nextRow = 2
+    duplicateCount = duplicateCount + Log_Duplicates_For_Sheet( _
+        wbDest.Worksheets("Host Removals"), wsLog, nextRow)
+    duplicateCount = duplicateCount + Log_Duplicates_For_Sheet( _
+        wbDest.Worksheets("Working Links"), wsLog, nextRow)
+
+    If duplicateCount = 0 Then
+        wsLog.Cells(2, 1).Value = "No duplicate Host Site Links found."
+    End If
+
+    wsLog.Columns("A:D").AutoFit
+    Write_Duplicate_Host_Link_Log = duplicateCount
+
+End Function
+
+Private Function Reset_Log_Sheet(ByVal wb As Workbook) As Worksheet
+
+    Dim ws As Worksheet
+
+    On Error Resume Next
+    Set ws = wb.Worksheets(LOG_SHEET_NAME)
+    On Error GoTo 0
+
+    If ws Is Nothing Then
+        Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+        ws.Name = LOG_SHEET_NAME
+    Else
+        ws.Cells.Clear
+    End If
+
+    Set Reset_Log_Sheet = ws
+
+End Function
+
+Private Function Log_Duplicates_For_Sheet(ByVal wsData As Worksheet, _
+                                          ByVal wsLog As Worksheet, _
+                                          ByRef nextRow As Long) As Long
+
+    Dim linkCol As Long
+    Dim lastRow As Long
+    Dim r As Long
+    Dim key As String
+    Dim counts As Object
+    Dim rowsByKey As Object
+    Dim item As Variant
+    Dim duplicateCount As Long
+
+    Set counts = CreateObject("Scripting.Dictionary")
+    Set rowsByKey = CreateObject("Scripting.Dictionary")
+
+    linkCol = GetColumn(wsData, "Host Site Link", DEST_HEADER_ROW)
+    lastRow = GetLastRow(wsData, linkCol)
+
+    For r = DEST_START_ROW To lastRow
+        key = Trim$(CStr(wsData.Cells(r, linkCol).Value))
+        If Len(key) > 0 Then
+            If counts.Exists(key) Then
+                counts(key) = counts(key) + 1
+                rowsByKey(key) = rowsByKey(key) & ", " & r
+            Else
+                counts.Add key, 1
+                rowsByKey.Add key, CStr(r)
+            End If
+        End If
+    Next r
+
+    For Each item In counts.Keys
+        If counts(item) > 1 Then
+            wsLog.Cells(nextRow, 1).Value = wsData.Name
+            wsLog.Cells(nextRow, 2).Value = item
+            wsLog.Cells(nextRow, 3).Value = counts(item)
+            wsLog.Cells(nextRow, 4).Value = rowsByKey(item)
+            nextRow = nextRow + 1
+            duplicateCount = duplicateCount + 1
+        End If
+    Next item
+
+    Log_Duplicates_For_Sheet = duplicateCount
+
+End Function
+
+'========================================================
+' VALIDATION / UTILITY
+
+    wsLog.Range("A1:D1").Value = Array("Sheet", "Host Site Link", "Count", "Rows")
+    wsLog.Range("A1:D1").Value = Array("Sheet", "Host Site Link", "Count", "Sample Rows")
+    wsLog.Range("A1:D1").Font.Bold = True
+                counts(key) = counts(key) + 1
+                rowsByKey(key) = rowsByKey(key) & ", " & r
+                If counts(key) <= 25 Then
+                    rowsByKey(key) = rowsByKey(key) & ", " & r
+                ElseIf counts(key) = 26 Then
+                    rowsByKey(key) = rowsByKey(key) & ", ..."
+                End If
+            Else
