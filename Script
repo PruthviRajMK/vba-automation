@@ -14,7 +14,7 @@ Private Const SOURCE_SUMMARY_HEADER_ROW As Long = 1
 Private Const LOG_SHEET_NAME As String = "Automation Log"
 
 '========================================================
-' MAIN ENTRY POINT
+' MAIN ENTRY POINT WITH FILE SELECTION DIALOG
 '========================================================
 
 Public Sub Main_Automation()
@@ -28,18 +28,17 @@ Public Sub Main_Automation()
 
     SetAppState False
 
-    ' Configure file paths - MODIFY THESE PATHS AS NEEDED
-    sourcePath = ThisWorkbook.Path & "\Source_Data.xlsx"
-    destPath = ThisWorkbook.Path & "\Destination_Data.xlsx"
-
-    ' Validate file paths exist
-    If Dir(sourcePath) = "" Then
-        MsgBox "Source file not found: " & sourcePath, vbCritical
+    ' Open file dialog for source file
+    sourcePath = SelectExcelFile("Select Source Data File")
+    If sourcePath = "" Then
+        MsgBox "No source file selected.", vbExclamation
         GoTo CleanExit
     End If
 
-    If Dir(destPath) = "" Then
-        MsgBox "Destination file not found: " & destPath, vbCritical
+    ' Open file dialog for destination file
+    destPath = SelectExcelFile("Select Destination Data File")
+    If destPath = "" Then
+        MsgBox "No destination file selected.", vbExclamation
         GoTo CleanExit
     End If
 
@@ -80,6 +79,34 @@ ErrorHandler:
     Err.Raise Err.Number, Err.Source, Err.Description
 
 End Sub
+
+'========================================================
+' FILE SELECTION DIALOG
+'========================================================
+
+Private Function SelectExcelFile(ByVal dialogTitle As String) As String
+
+    Dim fd As Object
+    Dim selectedFile As String
+
+    ' Create FileDialog object
+    Set fd = Application.FileDialog(4) ' 4 = msoFileDialogOpen
+
+    With fd
+        .Title = dialogTitle
+        .AllowMultiSelect = False
+        .Filters.Add "Excel Files", "*.xlsx; *.xls; *.xlsm", 1
+        .Filters.Add "All Files", "*.*", 2
+        .Show
+        
+        If .SelectedItems.Count > 0 Then
+            selectedFile = .SelectedItems(1)
+        End If
+    End With
+
+    SelectExcelFile = selectedFile
+
+End Function
 
 '========================================================
 ' AUTOMATION CORE PROCESSING
