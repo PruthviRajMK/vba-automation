@@ -1,6 +1,49 @@
+'========================================================
+' VBA AUTOMATION SCRIPT - COMPLETE MODULE
+' Purpose: Process host removal data and generate reports
+'========================================================
+
+'========================================================
+' MODULE-LEVEL DECLARATIONS
+'========================================================
+
 Private Const DEST_START_ROW As Long = 7
+Private Const DEST_HEADER_ROW As Long = 6
+Private Const SOURCE_HEADER_ROW As Long = 1
+Private Const SOURCE_SUMMARY_HEADER_ROW As Long = 1
 Private Const LOG_SHEET_NAME As String = "Automation Log"
 
+'========================================================
+' MAIN ENTRY POINT
+'========================================================
+
+Public Sub Main_Automation()
+
+    Dim sourcePath As String
+    Dim destPath As String
+    Dim wbSource As Workbook
+    Dim wbDest As Workbook
+
+    On Error GoTo ErrorHandler
+
+    SetAppState False
+
+    ' Configure file paths - MODIFY THESE PATHS AS NEEDED
+    sourcePath = ThisWorkbook.Path & "\Source_Data.xlsx"
+    destPath = ThisWorkbook.Path & "\Destination_Data.xlsx"
+
+    ' Validate file paths exist
+    If Dir(sourcePath) = "" Then
+        MsgBox "Source file not found: " & sourcePath, vbCritical
+        GoTo CleanExit
+    End If
+
+    If Dir(destPath) = "" Then
+        MsgBox "Destination file not found: " & destPath, vbCritical
+        GoTo CleanExit
+    End If
+
+    Set wbSource = Workbooks.Open(sourcePath)
     Set wbDest = Workbooks.Open(destPath)
 
     ValidateRequiredSheets wbSource, wbDest
@@ -33,9 +76,14 @@ ErrorHandler:
     On Error GoTo 0
 
     SetAppState True
+    MsgBox "Error in Main_Automation: " & Err.Description, vbCritical
     Err.Raise Err.Number, Err.Source, Err.Description
 
 End Sub
+
+'========================================================
+' AUTOMATION CORE PROCESSING
+'========================================================
 
 Private Sub Run_Automation_Core(ByVal wbSource As Workbook, _
                                 ByVal wbDest As Workbook, _
@@ -110,6 +158,7 @@ ErrorHandler:
     On Error GoTo 0
 
     SetAppState True
+    MsgBox "Error in Run_Automation_Core: " & Err.Description, vbCritical
     Err.Raise Err.Number, Err.Source, Err.Description
 
 End Sub
@@ -363,3 +412,194 @@ End Function
 '========================================================
 ' VALIDATION / UTILITY HELPERS
 '========================================================
+
+Private Sub ValidateRequiredSheets(ByVal wbSource As Workbook, ByVal wbDest As Workbook)
+
+    Dim requiredSourceSheets As Variant
+    Dim requiredDestSheets As Variant
+    Dim i As Long
+    Dim sheetFound As Boolean
+
+    requiredSourceSheets = Array("Content Removal Report", "Working Links", "3gp Links", _
+                                 "Embed Links", "Source Links", "Search Engine Delisting", _
+                                 "Hosting Site Summary")
+
+    requiredDestSheets = Array("Host Removals", "Working Links", "Search Engine Delisting", _
+                               "Hosting Site Summary")
+
+    ' Check source sheets
+    For i = LBound(requiredSourceSheets) To UBound(requiredSourceSheets)
+        sheetFound = False
+        On Error Resume Next
+        sheetFound = (wbSource.Worksheets(requiredSourceSheets(i)).Name <> "")
+        On Error GoTo 0
+        
+        If Not sheetFound Then
+            MsgBox "Required source sheet not found: " & requiredSourceSheets(i), vbCritical
+            Err.Raise 1001
+        End If
+    Next i
+
+    ' Check destination sheets
+    For i = LBound(requiredDestSheets) To UBound(requiredDestSheets)
+        sheetFound = False
+        On Error Resume Next
+        sheetFound = (wbDest.Worksheets(requiredDestSheets(i)).Name <> "")
+        On Error GoTo 0
+        
+        If Not sheetFound Then
+            MsgBox "Required destination sheet not found: " & requiredDestSheets(i), vbCritical
+            Err.Raise 1002
+        End If
+    Next i
+
+End Sub
+
+Private Function GetColumn(ByVal ws As Worksheet, ByVal headerName As String, ByVal headerRow As Long) As Long
+
+    Dim col As Long
+    Dim lastCol As Long
+    Dim cellValue As String
+
+    lastCol = ws.Cells(headerRow, ws.Columns.Count).End(xlToLeft).Column
+
+    For col = 1 To lastCol
+        cellValue = CleanHeader(ws.Cells(headerRow, col).Value)
+        If InStr(1, cellValue, headerName, vbTextCompare) > 0 Then
+            GetColumn = col
+            Exit Function
+        End If
+    Next col
+
+    GetColumn = 0
+
+End Function
+
+Private Function GetLastRow(ByVal ws As Worksheet, ByVal col As Long) As Long
+
+    If col <= 0 Then
+        GetLastRow = ws.Cells.Find("*", , , , xlByRows, xlPrevious).Row
+    Else
+        GetLastRow = ws.Cells(ws.Rows.Count, col).End(xlUp).Row
+    End If
+
+End Function
+
+Private Function GetLastRowAny(ByVal ws As Worksheet) As Long
+
+    On Error Resume Next
+    GetLastRowAny = ws.Cells.Find("*", , , , xlByRows, xlPrevious).Row
+    On Error GoTo 0
+
+    If GetLastRowAny = 0 Then GetLastRowAny = 1
+
+End Function
+
+Private Function GetLastNumericRow(ByVal ws As Worksheet, ByVal col As Long) As Long
+
+    Dim r As Long
+    Dim lastRow As Long
+
+    lastRow = GetLastRow(ws, col)
+
+    For r = lastRow To 1 Step -1
+        If IsNumeric(ws.Cells(r, col).Value) Then
+            GetLastNumericRow = r
+            Exit Function
+        End If
+    Next r
+
+    GetLastNumericRow = 1
+
+End Function
+
+Private Function CleanHeader(ByVal headerText As Variant) As String
+
+    CleanHeader = Trim$(UCase$(CStr(headerText)))
+
+End Function
+
+Private Function IsNumeric(ByVal cellValue As Variant) As Boolean
+
+    If VarType(cellValue) = vbNull Or VarType(cellValue) = vbEmpty Then
+        IsNumeric = False
+        Exit Function
+    End If
+
+    On Error Resume Next
+    IsNumeric = Not IsNaN(CDbl(cellValue))
+    On Error GoTo 0
+
+End Function
+
+Private Sub SetAppState(ByVal enableInteraction As Boolean)
+
+    With Application
+        .ScreenUpdating = enableInteraction
+        .Calculation = IIf(enableInteraction, xlAutomatic, xlManual)
+        .EnableEvents = enableInteraction
+        .DisplayAlerts = enableInteraction
+    End With
+
+End Sub
+
+'========================================================
+' PLACEHOLDER PROCESSING SUBROUTINES
+' These are stubs - implement based on your requirements
+'========================================================
+
+Private Sub Clear_Host_Removals_Data(ByVal ws As Worksheet)
+    ' Clear data rows while keeping headers
+    On Error Resume Next
+    ws.Range("A" & DEST_START_ROW & ":Z" & GetLastRow(ws, 1)).ClearContents
+    On Error GoTo 0
+End Sub
+
+Private Sub Clear_Working_Links_Data(ByVal ws As Worksheet)
+    ' Clear data rows while keeping headers
+    On Error Resume Next
+    ws.Range("A" & DEST_START_ROW & ":Z" & GetLastRow(ws, 1)).ClearContents
+    On Error GoTo 0
+End Sub
+
+Private Sub Clear_Data_By_Headers(ByVal ws As Worksheet, ByVal headers As Variant)
+    ' Clear data rows while keeping headers
+    On Error Resume Next
+    ws.Range("A" & DEST_START_ROW & ":Z" & GetLastRow(ws, 1)).ClearContents
+    On Error GoTo 0
+End Sub
+
+Private Sub Clear_Hosting_Site_Summary_Data(ByVal ws As Worksheet)
+    ' Clear data rows while keeping headers
+    On Error Resume Next
+    ws.Range("A" & DEST_START_ROW & ":Z" & GetLastRow(ws, 1)).ClearContents
+    On Error GoTo 0
+End Sub
+
+Private Sub Process_Host_Removals(ByVal wbSource As Workbook, ByVal wbDest As Workbook)
+    ' TODO: Implement data processing logic
+End Sub
+
+Private Sub Process_Working_Links(ByVal wbSource As Workbook, ByVal wbDest As Workbook)
+    ' TODO: Implement data processing logic
+End Sub
+
+Private Sub Process_3gp_Links(ByVal wbSource As Workbook, ByVal wbDest As Workbook)
+    ' TODO: Implement data processing logic
+End Sub
+
+Private Sub Process_Embed_Links(ByVal wbSource As Workbook, ByVal wbDest As Workbook)
+    ' TODO: Implement data processing logic
+End Sub
+
+Private Sub Process_Source_Links(ByVal wbSource As Workbook, ByVal wbDest As Workbook)
+    ' TODO: Implement data processing logic
+End Sub
+
+Private Sub Process_Search_Engine_Delisting(ByVal wbSource As Workbook, ByVal wbDest As Workbook)
+    ' TODO: Implement data processing logic
+End Sub
+
+Private Sub Process_Hosting_Site_Summary(ByVal wbSource As Workbook, ByVal wbDest As Workbook)
+    ' TODO: Implement data processing logic
+End Sub
